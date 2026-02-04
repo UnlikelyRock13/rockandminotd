@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title>Rock &amp; Mineral of the Day</title>
+    <link>https://UnlikelyRock13.github.io/rockandminotd</link>
+    <description>Daily geology education featuring a different rock and mineral each day from Wikipedia</description>
+    <language>en-us</language>
+    <lastBuildDate>Wed, 04 Feb 2026 14:29:25 +0000</lastBuildDate>
+    <atom:link href="https://UnlikelyRock13.github.io/rockandminotd/feed.xml" rel="self" type="application/rss+xml"/>
+    <item>
+      <title>Slate &amp; Quartz - February 04, 2026</title>
+      <link>https://UnlikelyRock13.github.io/rockandminotd</link>
+      <description>
+    &lt;h2&gt;🪨 Today's Rock: Slate&lt;/h2&gt;
+    &lt;p&gt;A fine-grained metamorphic rock that splits into thin sheets. Used for roofing and flooring.&lt;/p&gt;
+    &lt;p&gt;&lt;a href="https://en.wikipedia.org/wiki/Slate"&gt;Learn more about Slate on Wikipedia&lt;/a&gt;&lt;/p&gt;
+    
+    &lt;h2&gt;💎 Today's Mineral: Quartz&lt;/h2&gt;
+    &lt;p&gt;One of the most abundant minerals in Earth's crust. Composed of silicon and oxygen, it's very hard and comes in many varieties.&lt;/p&gt;
+    &lt;p&gt;&lt;a href="https://en.wikipedia.org/wiki/Quartz"&gt;Learn more about Quartz on Wikipedia&lt;/a&gt;&lt;/p&gt;
+    
+    &lt;p&gt;&lt;em&gt;Visit the &lt;a href="https://UnlikelyRock13.github.io/rockandminotd"&gt;Rock &amp; Mineral of the Day&lt;/a&gt; page for images and full Wikipedia articles.&lt;/em&gt;&lt;/p&gt;
+    </description>
+      <guid isPermaLink="false">rock-mineral-2026-02-04</guid>
+      <pubDate>Wed, 04 Feb 2026 06:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>
