@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Generate RSS feed for Rock & Mineral of the Day
-Maintains a 30-day history of entries
+Single item per day - optimized for Readwise Reader
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
@@ -92,13 +92,15 @@ def get_specimens_for_date(date):
     mineral_index = day % len(minerals)
     return rocks[rock_index], minerals[mineral_index]
 
-def create_rss_feed(base_url, days_history=30):
-    """Generate RSS feed XML with history"""
-    now = datetime.now()
+def create_rss_feed(base_url):
+    """Generate RSS feed XML with only today's item"""
+    now = datetime.utcnow()  # Use UTC time
+    rock, mineral = get_specimens_for_date(now)
     
     # Create RSS structure
     rss = ET.Element('rss', version='2.0')
     rss.set('xmlns:atom', 'http://www.w3.org/2005/Atom')
+    rss.set('xmlns:dc', 'http://purl.org/dc/elements/1.1/')
     
     channel = ET.SubElement(rss, 'channel')
     
@@ -115,41 +117,35 @@ def create_rss_feed(base_url, days_history=30):
     atom_link.set('rel', 'self')
     atom_link.set('type', 'application/rss+xml')
     
-    # Create items for the last N days (most recent first)
-    for days_ago in range(days_history):
-        item_date = now - timedelta(days=days_ago)
-        rock, mineral = get_specimens_for_date(item_date)
-        
-        item = ET.SubElement(channel, 'item')
-        
-        # Title: "Rock Name & Mineral Name - Date"
-        title = f"{rock['name']} & {mineral['name']} - {item_date.strftime('%B %d, %Y')}"
-        ET.SubElement(item, 'title').text = title
-        
-        # Link to the page
-        ET.SubElement(item, 'link').text = base_url
-        
-        # Description: Combined rock and mineral info
-        description = f"""
-        <h2>🪨 Today's Rock: {rock['name']}</h2>
-        <p>{rock['desc']}</p>
-        <p><a href="https://en.wikipedia.org/wiki/{rock['name'].replace(' ', '_')}">Learn more about {rock['name']} on Wikipedia</a></p>
-        
-        <h2>💎 Today's Mineral: {mineral['name']}</h2>
-        <p>{mineral['desc']}</p>
-        <p><a href="https://en.wikipedia.org/wiki/{mineral['name'].replace(' ', '_')}">Learn more about {mineral['name']} on Wikipedia</a></p>
-        
-        <p><em>Visit the <a href="{base_url}">Rock & Mineral of the Day</a> page for images and full Wikipedia articles.</em></p>
-        """
-        ET.SubElement(item, 'description').text = description
-        
-        # GUID: unique identifier for this day
-        guid = ET.SubElement(item, 'guid', isPermaLink='false')
-        guid.text = f"rock-mineral-{item_date.strftime('%Y-%m-%d')}"
-        
-        # Publication date (set to 6 AM on that day)
-        pub_date = item_date.replace(hour=6, minute=0, second=0, microsecond=0)
-        ET.SubElement(item, 'pubDate').text = pub_date.strftime('%a, %d %b %Y %H:%M:%S +0000')
+    # Create item for today ONLY
+    item = ET.SubElement(channel, 'item')
+    
+    # Title: "Rock Name & Mineral Name - Date"
+    title = f"{rock['name']} & {mineral['name']} - {now.strftime('%B %d, %Y')}"
+    ET.SubElement(item, 'title').text = title
+    
+    # Link to the page
+    ET.SubElement(item, 'link').text = base_url
+    
+    # Description: Combined rock and mineral info
+    description = f"""<h2>🪨 Today's Rock: {rock['name']}</h2>
+<p>{rock['desc']}</p>
+<p><a href="https://en.wikipedia.org/wiki/{rock['name'].replace(' ', '_')}">Learn more about {rock['name']} on Wikipedia</a></p>
+
+<h2>💎 Today's Mineral: {mineral['name']}</h2>
+<p>{mineral['desc']}</p>
+<p><a href="https://en.wikipedia.org/wiki/{mineral['name'].replace(' ', '_')}">Learn more about {mineral['name']} on Wikipedia</a></p>
+
+<p><em>Visit the <a href="{base_url}">Rock & Mineral of the Day</a> page for images and full Wikipedia articles.</em></p>"""
+    
+    ET.SubElement(item, 'description').text = description
+    
+    # GUID: unique identifier for this day (critical for RSS readers)
+    guid = ET.SubElement(item, 'guid', isPermaLink='false')
+    guid.text = f"rockmineral-{now.strftime('%Y%m%d')}"
+    
+    # Publication date - use current time to ensure it's "new"
+    ET.SubElement(item, 'pubDate').text = now.strftime('%a, %d %b %Y %H:%M:%S +0000')
     
     # Pretty print XML
     xml_str = minidom.parseString(ET.tostring(rss)).toprettyxml(indent='  ')
@@ -157,14 +153,11 @@ def create_rss_feed(base_url, days_history=30):
     return xml_str
 
 if __name__ == '__main__':
-    # You'll need to replace this with your actual GitHub Pages URL
-    # Format: https://yourusername.github.io/rock-of-the-day
     import sys
     
     if len(sys.argv) > 1:
         base_url = sys.argv[1]
     else:
-        # Default - will be overridden by GitHub Actions
         base_url = 'https://yourusername.github.io/rock-of-the-day'
     
     feed_xml = create_rss_feed(base_url)
@@ -172,6 +165,6 @@ if __name__ == '__main__':
     with open('feed.xml', 'w', encoding='utf-8') as f:
         f.write(feed_xml)
     
-    today_rock, today_mineral = get_specimens_for_date(datetime.now())
-    print(f"RSS feed generated successfully with 30 days of history!")
+    today_rock, today_mineral = get_specimens_for_date(datetime.utcnow())
+    print(f"RSS feed generated successfully!")
     print(f"Today's specimens: {today_rock['name']} & {today_mineral['name']}")
