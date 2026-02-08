@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate RSS feed for Rock & Mineral of the Day
-Single item per day - optimized for Readwise Reader
+Generate Rock & Mineral of the Day pages and RSS feed
+Creates individual HTML pages for each day plus a homepage index
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
+import os
 
 # Curated lists of rocks and minerals
 rocks = [
@@ -92,43 +93,307 @@ def get_specimens_for_date(date):
     mineral_index = day % len(minerals)
     return rocks[rock_index], minerals[mineral_index]
 
-def create_rss_feed(base_url):
-    """Generate RSS feed XML with only today's item"""
-    now = datetime.utcnow()  # Use UTC time
-    rock, mineral = get_specimens_for_date(now)
+def create_daily_page(date, rock, mineral, base_url):
+    """Create individual HTML page for a specific day"""
+    date_str = date.strftime('%Y-%m-%d')
+    formatted_date = date.strftime('%B %d, %Y')
     
-    # Create RSS structure
+    # Escape single quotes in descriptions for JavaScript
+    rock_desc = rock['desc'].replace("'", "\\'")
+    mineral_desc = mineral['desc'].replace("'", "\\'")
+    
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{rock['name']} & {mineral['name']} - Rock & Mineral of the Day</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const {{ useState, useEffect }} = React;
+
+        const DailyPage = () => {{
+            const [rockData, setRockData] = useState(null);
+            const [mineralData, setMineralData] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            const rockName = "{rock['name']}";
+            const mineralName = "{mineral['name']}";
+            const rockDesc = `{rock_desc}`;
+            const mineralDesc = `{mineral_desc}`;
+
+            useEffect(() => {{
+                const fetchData = async (name, isRock) => {{
+                    const fallback = {{
+                        title: name,
+                        extract: isRock ? rockDesc : mineralDesc,
+                        thumbnail: null,
+                        url: `https://en.wikipedia.org/wiki/${{encodeURIComponent(name)}}`
+                    }};
+
+                    try {{
+                        const params = new URLSearchParams({{
+                            action: 'query',
+                            format: 'json',
+                            prop: 'extracts|pageimages',
+                            exintro: true,
+                            explaintext: true,
+                            piprop: 'thumbnail|original',
+                            pithumbsize: 800,
+                            titles: name,
+                            origin: '*',
+                            redirects: 1
+                        }});
+
+                        const response = await fetch(`https://en.wikipedia.org/w/api.php?${{params}}`);
+                        if (!response.ok) return fallback;
+
+                        const data = await response.json();
+                        const pages = data.query.pages;
+                        const pageId = Object.keys(pages)[0];
+                        const pageData = pages[pageId];
+
+                        if (pageId === '-1' || !pageData.extract) return fallback;
+
+                        return {{
+                            title: pageData.title,
+                            extract: pageData.extract,
+                            thumbnail: pageData.thumbnail,
+                            url: `https://en.wikipedia.org/wiki/${{encodeURIComponent(name)}}`
+                        }};
+                    }} catch (err) {{
+                        return fallback;
+                    }}
+                }};
+
+                const loadData = async () => {{
+                    const [rock, mineral] = await Promise.all([
+                        fetchData(rockName, true),
+                        fetchData(mineralName, false)
+                    ]);
+                    setRockData(rock);
+                    setMineralData(mineral);
+                    setLoading(false);
+                }};
+
+                loadData();
+            }}, []);
+
+            if (loading) {{
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
+                        <p className="text-slate-300 text-lg">Loading...</p>
+                    </div>
+                );
+            }}
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-slate-800 to-slate-900 p-4 md:p-8">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="text-center mb-8">
+                            <h1 className="text-4xl md:text-5xl font-bold text-cyan-400 mb-2">
+                                🪨 Rock & Mineral of the Day
+                            </h1>
+                            <p className="text-slate-300 text-lg">{formatted_date}</p>
+                            <a href="{base_url}" className="text-cyan-400 hover:text-cyan-300 text-sm mt-2 inline-block">← Back to All Posts</a>
+                        </div>
+
+                        <div className="mb-8">
+                            <h2 className="text-2xl font-bold text-cyan-300 mb-4 flex items-center gap-2">
+                                <span className="text-3xl">🪨</span> Today's Rock
+                            </h2>
+                            <div className="bg-slate-700/50 backdrop-blur rounded-xl shadow-2xl overflow-hidden border border-slate-600">
+                                {{rockData.thumbnail && (
+                                    <div className="relative h-64 md:h-96 bg-slate-900">
+                                        <img 
+                                            src={{rockData.thumbnail.source}} 
+                                            alt={{rockData.title}}
+                                            className="w-full h-full object-contain p-4"
+                                        />
+                                    </div>
+                                )}}
+                                <div className="p-6 md:p-8">
+                                    <h3 className="text-3xl md:text-4xl font-bold text-cyan-300 mb-4">
+                                        {{rockData.title}}
+                                    </h3>
+                                    <p className="text-slate-200 text-lg leading-relaxed mb-6">
+                                        {{rockData.extract}}
+                                    </p>
+                                    <a 
+                                        href={{rockData.url}}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-cyan-500 hover:bg-cyan-600 text-slate-900 font-semibold px-6 py-2 rounded-lg transition-colors duration-200 inline-block"
+                                    >
+                                        Learn More on Wikipedia
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mb-8">
+                            <h2 className="text-2xl font-bold text-emerald-300 mb-4 flex items-center gap-2">
+                                <span className="text-3xl">💎</span> Today's Mineral
+                            </h2>
+                            <div className="bg-slate-700/50 backdrop-blur rounded-xl shadow-2xl overflow-hidden border border-slate-600">
+                                {{mineralData.thumbnail && (
+                                    <div className="relative h-64 md:h-96 bg-slate-900">
+                                        <img 
+                                            src={{mineralData.thumbnail.source}} 
+                                            alt={{mineralData.title}}
+                                            className="w-full h-full object-contain p-4"
+                                        />
+                                    </div>
+                                )}}
+                                <div className="p-6 md:p-8">
+                                    <h3 className="text-3xl md:text-4xl font-bold text-emerald-300 mb-4">
+                                        {{mineralData.title}}
+                                    </h3>
+                                    <p className="text-slate-200 text-lg leading-relaxed mb-6">
+                                        {{mineralData.extract}}
+                                    </p>
+                                    <a 
+                                        href={{mineralData.url}}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-2 rounded-lg transition-colors duration-200 inline-block"
+                                    >
+                                        Learn More on Wikipedia
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }};
+
+        ReactDOM.render(<DailyPage />, document.getElementById('root'));
+    </script>
+</body>
+</html>"""
+    
+    return html
+
+def create_index_page(dates_and_specimens, base_url):
+    """Create homepage with list of all posts"""
+    
+    posts_html = ""
+    for date, rock, mineral in dates_and_specimens:
+        date_str = date.strftime('%Y-%m-%d')
+        formatted_date = date.strftime('%B %d, %Y')
+        
+        # Escape quotes for JSX
+        rock_desc_short = rock['desc'][:100].replace('"', '\\"').replace("'", "\\'") + "..."
+        mineral_desc_short = mineral['desc'][:100].replace('"', '\\"').replace("'", "\\'") + "..."
+        
+        posts_html += f'''
+                    <a href="{base_url}/{date_str}.html" className="block bg-slate-700/50 backdrop-blur rounded-lg p-6 border border-slate-600 hover:border-cyan-400 transition-colors duration-200">
+                        <div className="flex items-start gap-4">
+                            <div className="text-4xl">🪨💎</div>
+                            <div className="flex-1">
+                                <h2 className="text-2xl font-bold text-cyan-300 mb-2">
+                                    {rock['name']} & {mineral['name']}
+                                </h2>
+                                <p className="text-slate-400 text-sm mb-3">{formatted_date}</p>
+                                <div className="space-y-2">
+                                    <p className="text-slate-300"><span className="text-cyan-400 font-semibold">Rock:</span> {rock_desc_short}</p>
+                                    <p className="text-slate-300"><span className="text-emerald-400 font-semibold">Mineral:</span> {mineral_desc_short}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </a>'''
+    
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rock & Mineral of the Day</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const IndexPage = () => {{
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-slate-800 to-slate-900 p-4 md:p-8">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="text-center mb-12">
+                            <h1 className="text-5xl md:text-6xl font-bold text-cyan-400 mb-4">
+                                🪨 Rock & Mineral of the Day
+                            </h1>
+                            <p className="text-slate-300 text-lg">
+                                Daily geology education featuring rocks and minerals from Wikipedia
+                            </p>
+                        </div>
+
+                        <div className="space-y-6">
+                            {posts_html}
+                        </div>
+
+                        <div className="mt-12 bg-slate-700/30 rounded-lg p-6 text-center">
+                            <p className="text-slate-300">
+                                Subscribe to the <a href="{base_url}/feed.xml" className="text-cyan-400 hover:text-cyan-300 underline">RSS feed</a> to get daily updates
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }};
+
+        ReactDOM.render(<IndexPage />, document.getElementById('root'));
+    </script>
+</body>
+</html>"""
+    
+    return html
+
+def create_rss_feed(dates_and_specimens, base_url):
+    """Generate RSS feed with recent posts"""
+    now = datetime.utcnow()
+    
     rss = ET.Element('rss', version='2.0')
     rss.set('xmlns:atom', 'http://www.w3.org/2005/Atom')
-    rss.set('xmlns:dc', 'http://purl.org/dc/elements/1.1/')
     
     channel = ET.SubElement(rss, 'channel')
     
-    # Channel metadata
     ET.SubElement(channel, 'title').text = 'Rock & Mineral of the Day'
     ET.SubElement(channel, 'link').text = base_url
     ET.SubElement(channel, 'description').text = 'Daily geology education featuring a different rock and mineral each day from Wikipedia'
     ET.SubElement(channel, 'language').text = 'en-us'
     ET.SubElement(channel, 'lastBuildDate').text = now.strftime('%a, %d %b %Y %H:%M:%S +0000')
     
-    # Self-reference
     atom_link = ET.SubElement(channel, 'atom:link')
     atom_link.set('href', f'{base_url}/feed.xml')
     atom_link.set('rel', 'self')
     atom_link.set('type', 'application/rss+xml')
     
-    # Create item for today ONLY
-    item = ET.SubElement(channel, 'item')
-    
-    # Title: "Rock Name & Mineral Name - Date"
-    title = f"{rock['name']} & {mineral['name']} - {now.strftime('%B %d, %Y')}"
-    ET.SubElement(item, 'title').text = title
-    
-    # Link to the page
-    ET.SubElement(item, 'link').text = base_url
-    
-    # Description: Combined rock and mineral info
-    description = f"""<h2>🪨 Today's Rock: {rock['name']}</h2>
+    # Add items for each date (most recent first)
+    for date, rock, mineral in dates_and_specimens:
+        date_str = date.strftime('%Y-%m-%d')
+        formatted_date = date.strftime('%B %d, %Y')
+        
+        item = ET.SubElement(channel, 'item')
+        
+        title = f"{rock['name']} & {mineral['name']} - {formatted_date}"
+        ET.SubElement(item, 'title').text = title
+        
+        # Link to the specific daily page
+        ET.SubElement(item, 'link').text = f"{base_url}/{date_str}.html"
+        
+        description = f"""<h2>🪨 Today's Rock: {rock['name']}</h2>
 <p>{rock['desc']}</p>
 <p><a href="https://en.wikipedia.org/wiki/{rock['name'].replace(' ', '_')}">Learn more about {rock['name']} on Wikipedia</a></p>
 
@@ -136,20 +401,17 @@ def create_rss_feed(base_url):
 <p>{mineral['desc']}</p>
 <p><a href="https://en.wikipedia.org/wiki/{mineral['name'].replace(' ', '_')}">Learn more about {mineral['name']} on Wikipedia</a></p>
 
-<p><em>Visit the <a href="{base_url}">Rock & Mineral of the Day</a> page for images and full Wikipedia articles.</em></p>"""
+<p><em>Visit the <a href="{base_url}/{date_str}.html">full post</a> for images and complete Wikipedia articles.</em></p>"""
+        
+        ET.SubElement(item, 'description').text = description
+        
+        guid = ET.SubElement(item, 'guid', isPermaLink='true')
+        guid.text = f"{base_url}/{date_str}.html"
+        
+        pub_date = date.replace(hour=6, minute=0, second=0, microsecond=0)
+        ET.SubElement(item, 'pubDate').text = pub_date.strftime('%a, %d %b %Y %H:%M:%S +0000')
     
-    ET.SubElement(item, 'description').text = description
-    
-    # GUID: unique identifier for this day (critical for RSS readers)
-    guid = ET.SubElement(item, 'guid', isPermaLink='false')
-    guid.text = f"rockmineral-{now.strftime('%Y%m%d')}"
-    
-    # Publication date - use current time to ensure it's "new"
-    ET.SubElement(item, 'pubDate').text = now.strftime('%a, %d %b %Y %H:%M:%S +0000')
-    
-    # Pretty print XML
     xml_str = minidom.parseString(ET.tostring(rss)).toprettyxml(indent='  ')
-    
     return xml_str
 
 if __name__ == '__main__':
@@ -158,13 +420,36 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         base_url = sys.argv[1]
     else:
-        base_url = 'https://yourusername.github.io/rock-of-the-day'
+        base_url = 'https://yourusername.github.io/rockandminotd'
     
-    feed_xml = create_rss_feed(base_url)
+    # Generate pages for last 30 days
+    now = datetime.utcnow()
+    dates_and_specimens = []
     
+    for days_ago in range(30):
+        date = now - timedelta(days=days_ago)
+        rock, mineral = get_specimens_for_date(date)
+        dates_and_specimens.append((date, rock, mineral))
+        
+        # Create daily page
+        date_str = date.strftime('%Y-%m-%d')
+        page_html = create_daily_page(date, rock, mineral, base_url)
+        
+        with open(f'{date_str}.html', 'w', encoding='utf-8') as f:
+            f.write(page_html)
+        
+        print(f"Created {date_str}.html - {rock['name']} & {mineral['name']}")
+    
+    # Create index page
+    index_html = create_index_page(dates_and_specimens, base_url)
+    with open('index.html', 'w', encoding='utf-8') as f:
+        f.write(index_html)
+    print("Created index.html")
+    
+    # Create RSS feed
+    feed_xml = create_rss_feed(dates_and_specimens, base_url)
     with open('feed.xml', 'w', encoding='utf-8') as f:
         f.write(feed_xml)
+    print("Created feed.xml")
     
-    today_rock, today_mineral = get_specimens_for_date(datetime.utcnow())
-    print(f"RSS feed generated successfully!")
-    print(f"Today's specimens: {today_rock['name']} & {today_mineral['name']}")
+    print(f"\nGenerated 30 daily pages, index, and RSS feed successfully!")
